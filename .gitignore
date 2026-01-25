@@ -1,0 +1,33 @@
+# ignore bin files
+**/*.bin
+
+# ignore retail extract files
+**/retail_extract/
+**/retail_extract.xml
+
+# ignore extracted files downloaded_tracks/, tracks/, missing_tracks/
+**/downloaded_tracks/
+**/tracks/
+**/missing_tracks/
+
+# ignore virtual environment folder
+**/venv/
+
+# ignore Python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.pdb
+**/*.egg-info/
+**/.eggs/
+**/*.dist-info/
+**/*.egg
+**/build/
+**/dist/
+
+# ignore legacy folder
+**/legacy/
+
+# ignore release readme files
+**/CT_README.md
