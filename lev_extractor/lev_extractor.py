@@ -1,20 +1,19 @@
 import os
-import sys
 import subprocess
 import shutil
 import time
 import glob
 import json
 import filecmp
-from pathlib import Path
 
 class Extractor:
-    def __init__(self):
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.deps_dir = os.path.join(self.base_dir, "Dependencies")
-        self.retail_extract_dir = os.path.join(self.base_dir, "retail_extract")
-        self.tracks_dir = os.path.join(self.base_dir, "tracks")
-        self.downloaded_tracks_dir = os.path.join(self.base_dir, "downloaded_tracks")
+    def __init__(self, base_dir=None, deps_dir=None, retail_extract_dir=None, tracks_dir=None, downloaded_tracks_dir=None):
+        resolved_base_dir = base_dir if base_dir is not None else os.path.dirname(os.path.abspath(__file__))
+        self.base_dir = os.path.abspath(str(resolved_base_dir))
+        self.deps_dir = os.path.abspath(str(deps_dir)) if deps_dir else os.path.join(self.base_dir, "Dependencies")
+        self.retail_extract_dir = os.path.abspath(str(retail_extract_dir)) if retail_extract_dir else os.path.join(self.base_dir, "retail_extract")
+        self.tracks_dir = os.path.abspath(str(tracks_dir)) if tracks_dir else os.path.join(self.base_dir, "tracks")
+        self.downloaded_tracks_dir = os.path.abspath(str(downloaded_tracks_dir)) if downloaded_tracks_dir else os.path.join(self.base_dir, "downloaded_tracks")
         
         # Error collection
         self.errors = []
@@ -29,23 +28,32 @@ class Extractor:
         self.dumpsxiso_path = os.path.join(self.deps_dir, "dumpsxiso.exe")
         self.bigtool_path = os.path.join(self.deps_dir, "bigtool.exe")
 
+    def resolve_path(self, path):
+        """Resolve path to absolute path based on base_dir when needed."""
+        if path is None:
+            return None
+        if os.path.isabs(path):
+            return path
+        return os.path.join(self.base_dir, path)
+
     def extract_rom(self, rom_path, output_dir, xml_name=None):
         """Extract a ROM file to a directory"""
-        print(f"Extracting {os.path.basename(rom_path)} to {output_dir}...")
+        resolved_output_dir = self.resolve_path(output_dir)
+        print(f"Extracting {os.path.basename(rom_path)} to {resolved_output_dir}...")
         
         if xml_name is None:
-            xml_name = f"{output_dir}.xml"
+            xml_name = f"{os.path.basename(resolved_output_dir)}.xml"
             
         # Extract the rom
         subprocess.run([
             self.dumpsxiso_path,
             rom_path,
-            "-x", output_dir,
+            "-x", resolved_output_dir,
             "-s", xml_name
         ], cwd=self.base_dir, check=True)
         
-        print(f"ROM extracted to {output_dir}")
-        return os.path.join(self.base_dir, output_dir)
+        print(f"ROM extracted to {resolved_output_dir}")
+        return resolved_output_dir
 
     def extract_bigfile(self, extract_dir):
         """Extract bigfile.big from an extracted ROM directory"""
@@ -151,7 +159,7 @@ class Extractor:
         
         return os.path.join(self.base_dir, output_bin)
 
-    def copy_track_files(self, lev_paths, vrm_paths, hwl_paths, track_name, output_dir, xdelta_path, track_info_path):
+    def copy_track_files(self, lev_paths, vrm_paths, hwl_paths, track_name, output_dir, xdelta_path, track_info_path=None):
         """Copy identified track files to output location"""
         print(f"Copying track files to {output_dir}...")
         
@@ -200,7 +208,7 @@ class Extractor:
         print(f"{os.path.basename(xdelta_path)} copied successfully")
         
         # Copy track_info.json
-        if os.path.exists(track_info_path):
+        if track_info_path and os.path.exists(track_info_path):
             shutil.copy(track_info_path, os.path.join(output_dir, "track_info.json"))
             print("track_info.json copied successfully")
             
@@ -287,127 +295,3 @@ class Extractor:
                 pass
             return False
     
-    def process_track_folder(self, track_folder, retail_rom):
-        """Process all xdelta files in a downloaded track folder"""
-        folder_name = os.path.basename(track_folder)
-        
-        print(f"\n{'='*60}")
-        print(f"Processing track folder: {folder_name}")
-        print(f"{'='*60}")
-        
-        # Load track info
-        track_info, track_info_path = self.load_track_info(track_folder)
-        
-        if track_info:
-            track_name = track_info.get("track_name", folder_name)
-            print(f"Track Name: {track_name}")
-            print(f"Author: {track_info.get('author', 'Unknown')}")
-            print(f"Date: {track_info.get('date', 'Unknown')}")
-        else:
-            track_name = folder_name
-            print(f"Warning: No track_info.json found, using folder name: {track_name}")
-        
-        # Find all xdelta files in this track folder
-        xdelta_files = glob.glob(os.path.join(track_folder, "*.xdelta"))
-        
-        if not xdelta_files:
-            error_msg = f"No xdelta files found in '{track_folder}'"
-            self.errors.append(error_msg)
-            print(f"✗ {error_msg}")
-            return
-        
-        print(f"Found {len(xdelta_files)} xdelta file(s)")
-        
-        # Sanitize track name for folder
-        sanitized_track_name = self.sanitize_name(track_name)
-        track_output_dir = os.path.join(self.tracks_dir, sanitized_track_name)
-        
-        if not os.path.exists(track_output_dir):
-            os.makedirs(track_output_dir)
-        
-        # Process xdelta files
-        if len(xdelta_files) == 1:
-            # Single xdelta - no subfolder needed
-            self.process_xdelta_file(xdelta_files[0], retail_rom, track_name, track_output_dir, track_info_path)
-        else:
-            # Multiple xdeltas - create numbered subfolders
-            for idx, xdelta_path in enumerate(xdelta_files, 1):
-                subfolder = os.path.join(track_output_dir, str(idx))
-                print(f"\nProcessing xdelta {idx}/{len(xdelta_files)}...")
-                self.process_xdelta_file(xdelta_path, retail_rom, track_name, subfolder, track_info_path)
-
-    def run(self):
-        """Main execution flow"""
-        # Find retail ROM
-        ctr_bins = glob.glob(os.path.join(self.base_dir, "*.bin"))
-        
-        if not ctr_bins:
-            print("ERROR: Can't find any .bin files in the base folder!")
-            print("ERROR: Make sure to paste the retail ROM in this folder")
-            return
-        
-        # Check if downloaded_tracks folder exists
-        if not os.path.exists(self.downloaded_tracks_dir):
-            print(f"ERROR: Can't find the '{self.downloaded_tracks_dir}' folder!")
-            print("ERROR: Run ct_downloader.py first to download tracks")
-            return
-        
-        # Find all track folders in downloaded_tracks
-        track_folders = [
-            os.path.join(self.downloaded_tracks_dir, d) 
-            for d in os.listdir(self.downloaded_tracks_dir) 
-            if os.path.isdir(os.path.join(self.downloaded_tracks_dir, d))
-        ]
-        
-        if not track_folders:
-            print(f"ERROR: No track folders found in '{self.downloaded_tracks_dir}'!")
-            return
-        
-        # Use the first retail ROM found
-        retail_rom = ctr_bins[0]
-        print(f"Using retail ROM: {os.path.basename(retail_rom)}")
-        print(f"Found {len(track_folders)} track folder(s) to process")
-        
-        # Extract retail ROM if not already extracted
-        if not os.path.exists(self.retail_extract_dir):
-            try:
-                retail_extract_path = self.extract_rom(retail_rom, "retail_extract")
-                self.extract_bigfile(retail_extract_path)
-            except Exception as e:
-                error_msg = f"Failed to extract retail ROM: {e}"
-                self.errors.append(error_msg)
-                print(f"✗ {error_msg}")
-                return
-        else:
-            print("Retail ROM already extracted, skipping extraction.")
-        
-        # Process each track folder
-        for i, track_folder in enumerate(track_folders, 1):
-            print(f"\n[{i}/{len(track_folders)}] Processing track folder...")
-            try:
-                self.process_track_folder(track_folder, retail_rom)
-            except Exception as e:
-                error_msg = f"Critical error processing folder '{os.path.basename(track_folder)}': {e}"
-                self.errors.append(error_msg)
-                print(f"✗ {error_msg}")
-                continue
-        
-        print(f"\n{'='*60}")
-        print("All track folders processed!")
-        print(f"{'='*60}")
-        
-        # Print all errors at the end
-        if self.errors:
-            print(f"\n{'='*60}")
-            print(f"ERRORS SUMMARY ({len(self.errors)} total errors)")
-            print(f"{'='*60}\n")
-            for idx, error in enumerate(self.errors, 1):
-                print(f"{idx}. {error}")
-            print(f"\n{'='*60}")
-        else:
-            print("\n✓ No errors encountered during execution!")
-
-
-if __name__ == "__main__":
-    extractor = Extractor()
-    extractor.run()

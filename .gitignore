@@ -9,6 +9,8 @@
 **/downloaded_tracks/
 **/tracks/
 **/missing_tracks/
+**/output/
+**/xdelta/
 
 # ignore virtual environment folder
 **/venv/
